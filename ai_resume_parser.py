@@ -8,16 +8,21 @@ from groq import Groq
 from pydantic import BaseModel, Field
 
 load_dotenv()
-my_api_key=os.getenv("GROQ_API_KEY")
-
-if not my_api_key:
-    raise ValueError("API key kaha hai bhai")
-
-client=Groq(api_key=my_api_key)
 model = "openai/gpt-oss-120b"
 
+_client: Groq | None = None
 
-job_description="""
+def get_client() -> Groq:
+    global _client
+    if _client is None:
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY is not set.")
+        _client = Groq(api_key=api_key)
+    return _client
+
+
+DEFAULT_JOB_DESCRIPTION = """
 Description
 Do you want to solve real customer problems through innovative technology? Do you enjoy working on scalable services in a collaborative team environment? Do you want to see your code directly impact millions of customers worldwide?
 
@@ -58,61 +63,28 @@ class JobD(BaseModel):
     education_requirements: list[str]
     responsibilities: list[str]
 
-jobd_schema = JobD.model_json_schema()
+def parse_job_description(description: str) -> JobD:
+    system_prompt = f"""
+You are an expert HR assistant. Extract structured information from the job
+description and return only valid JSON matching this schema:
 
-system_prompt = f"""
-You are an expert HR assistant.
+{JobD.model_json_schema()}
 
-Your job is to analyze job descriptions and extract
-structured information from them.
-
-Return ONLY valid JSON matching this schema:
-
-{jobd_schema}
-IMPORTANT:
-Do NOT return the schema itself.
-Do NOT return fields like "properties", "title" or "type".
-Fill the schema with actual information extracted from the job description.
-
-If minimum experience is not mentioned, return null.
-If information for a list is missing, return an empty list.
-Do not invent information.
+Do not return the schema itself or invent information. Use null when minimum
+experience is not mentioned and empty lists when list information is missing.
 """
-
-user_prompt = f"""
-Analyze the following job description:
-
-{job_description}
-"""
-message_system={
-    "role" : "system",
-    "content" : system_prompt
-}
-message_user={
-    "role" : "user",
-    "content" : user_prompt
-}
-response_format={
-    "type" : "json_object"
-}
-
-
-messages=[message_system, message_user]
-
-response=client.chat.completions.create(model=model, messages=messages, response_format=response_format)
-
-
-answer=response.choices[0].message.content
-
-raw_json=answer
-# print(raw_json)
-
-job_data=json.loads(raw_json)
-
-job = JobD(**job_data)
-
-print(job.minimum_experience)
-print(job.education_requirements)
+    response = get_client().chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Analyze this job description:\n\n{description}"},
+        ],
+        response_format={"type": "json_object"},
+    )
+    raw_json = response.choices[0].message.content
+    if not raw_json:
+        raise ValueError("The model returned an empty job description analysis.")
+    return JobD(**json.loads(raw_json))
 
 
 
@@ -125,7 +97,7 @@ class Experience(BaseModel):
     role: str | None = None
     duration: str | None = None
     description: str | None = None
-    skills_used: list[str] = []
+    skills_used: list[str] = Field(default_factory=list)
 
 class Resume(BaseModel):
     name: str | None = None
@@ -134,11 +106,11 @@ class Resume(BaseModel):
 
     total_experience_years: float | None = None
 
-    skills: list[str] = []
-    experiences: list[Experience] = []
-    education: list[str] = []
-    projects: list[str] = []
-    certifications: list[str] = []
+    skills: list[str] = Field(default_factory=list)
+    experiences: list[Experience] = Field(default_factory=list)
+    education: list[str] = Field(default_factory=list)
+    projects: list[str] = Field(default_factory=list)
+    certifications: list[str] = Field(default_factory=list)
 
 
 resume_schema = Resume.model_json_schema()
@@ -177,7 +149,7 @@ def final_score(job,resume):
     response_format={
         "type": "json_object"
     }
-    response = client.chat.completions.create(model=model, messages=messages, response_format=response_format)
+    response = get_client().chat.completions.create(model=model, messages=messages, response_format=response_format)
     raw_content = response.choices[0].message.content
     try:
         data = json.loads(raw_content)
@@ -236,7 +208,7 @@ def parse_resume(resume_text):
     response_format={
         "type": "json_object"
     }
-    response=client.chat.completions.create(model=model, messages=messages, response_format=response_format)
+    response=get_client().chat.completions.create(model=model, messages=messages, response_format=response_format)
     raw_output = response.choices[0].message.content
     try:
         data = json.loads(raw_output)
@@ -248,16 +220,7 @@ def parse_resume(resume_text):
     return resume
 
 
-try:
-    from pypdf import PdfReader
-except Exception:
-    try:
-        from PyPDF2 import PdfReader
-    except Exception:
-        import subprocess, sys
-        print("pypdf not installed; attempting to install into:", sys.executable)
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pypdf"])
-        from pypdf import PdfReader
+from pypdf import PdfReader
 from docx import Document
 def read_pdf(file_path):
     reader = PdfReader(file_path)
@@ -293,73 +256,48 @@ def read_resume(file_path):
 
 
 
-# lets do it now
-resume_folder = Path("resumes")
-all_results=[]
-for file_path in resume_folder.iterdir():
-    if file_path.suffix.lower() not in [".pdf", ".docx"]:
-        continue
-    print("\nProcessing:", file_path.name)
-    resume_text = read_resume(file_path)
-    if resume_text is None:
-        print("Skipping unsupported resume type:", file_path.name)
-        continue
-    if not resume_text.strip():
-        print("No text extracted from resume:", file_path.name)
-        continue
+def main():
+    job = parse_job_description(DEFAULT_JOB_DESCRIPTION)
+    all_results = []
+    for file_path in Path("resumes").iterdir():
+        if file_path.suffix.lower() not in [".pdf", ".docx"]:
+            continue
+        print("\nProcessing:", file_path.name)
+        resume_text = read_resume(file_path)
+        if not resume_text or not resume_text.strip():
+            print("No text extracted from resume:", file_path.name)
+            continue
 
-    try:
-        print("Parsing resume text...")
-        parsed_resume = parse_resume(resume_text) # llm call1
-        print("Parsed resume:", parsed_resume)
-    except Exception as err:
-        print("Error parsing resume:", err)
-        continue
+        try:
+            print("Parsing resume text...")
+            parsed_resume = parse_resume(resume_text)
+            print("Parsed resume:", parsed_resume)
+            time.sleep(5)
+            print("Scoring resume...")
+            result = final_score(job, parsed_resume)
+            print("Scoring result:", result)
+            time.sleep(5)
+        except Exception as err:
+            print("Error processing resume:", err)
+            continue
 
-    time.sleep(5)
-    try:
-        print("Scoring resume...")
-        result = final_score(job, parsed_resume) #llm call2
-        print("Scoring result:", result)
-    except Exception as err:
-        print("Error scoring resume:", err)
-        continue
+        all_results.append({
+            "name": parsed_resume.name,
+            "score": result.score,
+            "details": result.details,
+        })
 
-    # score and details
-    time.sleep(5)
-    print("Score:", result.score)
-    all_results.append({
-        "name": parsed_resume.name,
-        "score": result.score,
-        "details": result.details
-    })
-all_results.sort(
-    key=lambda candidate: candidate["score"],
-    reverse=True
-)
-top_2 = all_results[:2]
-worst_2 = all_results[-2:]
+    all_results.sort(key=lambda candidate: candidate["score"], reverse=True)
+    print("TOP 2 CANDIDATES")
+    for candidate in all_results[:2]:
+        print(candidate["name"], "-", candidate["score"], "%")
+        print(candidate["details"])
+
+    print("LOWEST 2 CANDIDATES")
+    for candidate in all_results[-2:]:
+        print(candidate["name"], "-", candidate["score"], "%")
+        print(candidate["details"])
 
 
-print("TOP 2 CANDIDATES")
-for candidate in top_2:
-
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
-    )
-
-    print(candidate["details"])
-
-print("LOWEST 2 CANDIDATES")
-for candidate in worst_2:
-
-    print(
-        candidate["name"],
-        "-",
-        candidate["score"],
-        "%"
-    )
-    print(candidate["details"])
+if __name__ == "__main__":
+    main()

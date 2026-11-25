@@ -1,46 +1,71 @@
-AI Resume Parser
-A lightweight, efficient tool designed to parse and extract structured data from resumes. This project aims to streamline the recruitment process by automating the conversion of unstructured resume files into machine-readable formats.
+# ResumeIQ
 
-🚀 Features
-Automated Extraction: Effortlessly parse key information from resume files.
+ResumeIQ parses PDF and DOCX resumes, compares candidates with a job description, and returns a ranked, explainable shortlist using Groq.
 
-Structured Output: Converts resume data into clean, usable formats.
+## Features
 
-Lightweight & Fast: Built with Python for quick performance.
+- Extracts structured resume details from PDF and DOCX files.
+- Compares candidates with a job description and explains match scores.
+- Provides a responsive React dashboard backed by a FastAPI API.
+- Keeps the original command-line batch parser available.
 
-Extensible: Easily adaptable for different resume templates and requirements.
+## Prerequisites
 
-🛠️ Tech Stack
-Language: Python
+- Python 3.14 or newer
+- Node.js and npm
+- A Groq API key
 
-Environment Management: uv (for high-speed dependency management)
+## Run locally
 
-📋 Prerequisites
-Ensure you have Python installed. This project uses uv for dependency management. If you don't have it, you can install it via:
+1. From the repository root, create the Python virtual environment and install backend dependencies:
 
-Bash
-pip install uv
-⚙️ Installation
-Clone the repository:
+   ```powershell
+   py -3.14 -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
 
-Bash
-git clone https://github.com/kalash123e-cmd/AI-Resume-Parser.git
-cd AI-Resume-Parser
-Install dependencies:
+   Alternatively, install the Python dependencies with [uv](https://docs.astral.sh/uv/):
 
-Bash
-uv sync
-🚀 Usage
-To run the parser, execute the following command:
+   ```powershell
+   uv sync
+   ```
 
-Bash
-python main.py
-(Optional: Provide brief instructions here on where to place the resume files for the script to detect them.)
+2. Add your Groq API key to `.env`:
 
-🤝 Contributing
-Contributions are welcome! Feel free to open an issue or submit a pull request if you have ideas for improvements, bug fixes, or additional feature support.
+   ```env
+   GROQ_API_KEY=your_api_key
+   ```
 
-👤 Author
+3. Start the API using the project interpreter:
+
+   ```powershell
+   .\.venv\Scripts\python.exe main.py
+   ```
+
+   The API runs at `http://127.0.0.1:8000`.
+
+4. In a second terminal, install and start the React app:
+
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+   Open the Vite URL shown in the terminal (usually `http://localhost:5173`).
+
+Upload one or more PDF/DOCX resumes, paste a job description, and choose **Analyze resumes**. Each resume is limited to 10 MB. The backend makes one job-description analysis call and two model calls per successfully processed resume.
+
+The batch workflow uses the example job description and reads resumes from `resumes/`:
+
+```powershell
+.\.venv\Scripts\python.exe ai_resume_parser.py
+```
+
+## Contributing
+
+Contributions are welcome. Open an issue or pull request with suggestions, fixes, or improvements.
+
+## Author
+
 Kalash Hayaran
-
-GitHub Profile
