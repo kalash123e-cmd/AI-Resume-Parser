@@ -56,6 +56,19 @@ ResumeIQ parses PDF and DOCX resumes, compares candidates with a job description
 
 Upload one or more PDF/DOCX resumes, paste a job description, and choose **Analyze resumes**. Each resume is limited to 10 MB. The backend makes one job-description analysis call and two model calls per successfully processed resume.
 
+## Deploying the frontend to Vercel and API to Railway
+
+The Vite development proxy works only locally. Deploy the FastAPI backend as a separate Railway service before connecting the Vercel frontend.
+
+1. In Railway, create a project from this GitHub repository. Use the repository root as the service root; Railway will build the backend from the included `Dockerfile`.
+2. Add these Railway service variables:
+   - `GROQ_API_KEY`: your Groq API key (keep it in Railway Variables, never in Git).
+   - `FRONTEND_ORIGINS`: your exact Vercel origin, such as `https://your-project.vercel.app`. Add custom or preview origins as comma-separated values.
+3. Generate a public Railway domain. Confirm `https://<railway-domain>/api/health` responds with `{"status":"ok"}`.
+4. In Vercel, set the project root directory to `frontend` and add `VITE_API_BASE_URL` with the Railway origin, such as `https://your-api.up.railway.app` (no `/api` suffix). Redeploy the frontend after setting this build-time variable.
+
+The frontend reports whether the configured API health endpoint is reachable. The Docker build excludes local resumes and environment files.
+
 The batch workflow uses the example job description and reads resumes from `resumes/`:
 
 ```powershell

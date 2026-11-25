@@ -23,6 +23,12 @@ import {
 } from "lucide-react";
 
 const ACCEPTED_TYPES = [".pdf", ".docx"];
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const API_URL_CONFIGURED = Boolean(API_BASE_URL) || !import.meta.env.PROD;
+
+function apiUrl(path) {
+  return `${API_BASE_URL}${path}`;
+}
 
 function getScoreColor(score) {
   if (score >= 80) return "strong";
@@ -64,9 +70,15 @@ function App() {
   useEffect(() => {
     let active = true;
     const checkApi = () => {
-      fetch("/api/health", { cache: "no-store" })
-        .then((response) => {
+      if (!API_URL_CONFIGURED) {
+        setApiStatus("unconfigured");
+        return;
+      }
+      fetch(apiUrl("/api/health"), { cache: "no-store" })
+        .then(async (response) => {
           if (!response.ok) throw new Error("API health check failed");
+          const data = await response.json();
+          if (data.status !== "ok") throw new Error("API health check failed");
           if (active) setApiStatus("online");
         })
         .catch(() => {
@@ -129,6 +141,10 @@ function App() {
 
   async function analyzeResumes(event) {
     event.preventDefault();
+    if (!API_URL_CONFIGURED) {
+      setError("Set VITE_API_BASE_URL in Vercel to your deployed API URL, then redeploy the frontend.");
+      return;
+    }
     if (!jobDescription.trim() || files.length === 0) {
       setError("Add a job description and at least one resume to get started.");
       return;
@@ -143,8 +159,13 @@ function App() {
     files.forEach((file) => formData.append("files", file));
 
     try {
-      const response = await fetch("/api/analyze", { method: "POST", body: formData });
-      const data = await response.json();
+      const response = await fetch(apiUrl("/api/analyze"), { method: "POST", body: formData });
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("The API returned a non-JSON response. Check VITE_API_BASE_URL and the backend URL.");
+      }
       if (!response.ok) throw new Error(data.detail || "Analysis failed. Please try again.");
       setResults(data.results || []);
       setJobAnalysis(data.job || null);
@@ -153,7 +174,7 @@ function App() {
     } catch (requestError) {
       setError(
         requestError.message.includes("Failed to fetch")
-          ? "Couldn't reach the analysis server. Start the API and try again."
+          ? "Could not reach the API. Check its deployment URL and allowed frontend origins."
           : requestError.message,
       );
     } finally {
@@ -215,7 +236,7 @@ function App() {
             <p>Compare PDF and DOCX resumes with your role.</p>
             <small className={`connection-label ${apiStatus}`}>
               <span className="connection-dot" />
-              {apiStatus === "online" ? "API CONNECTED" : apiStatus === "checking" ? "CHECKING API" : "API OFFLINE"}
+              {apiStatus === "online" ? "API CONNECTED" : apiStatus === "checking" ? "CHECKING API" : apiStatus === "unconfigured" ? "API URL NOT SET" : "API OFFLINE"}
             </small>
           </div>
           <div className="profile-summary">
@@ -231,7 +252,7 @@ function App() {
           <div className="topbar-actions">
             <span className={`api-status ${apiStatus}`} role="status">
               <span className="connection-dot" />
-              {apiStatus === "online" ? "API connected" : apiStatus === "checking" ? "Checking API…" : "API offline"}
+              {apiStatus === "online" ? "API connected" : apiStatus === "checking" ? "Checking API…" : apiStatus === "unconfigured" ? "API URL not set" : "API offline"}
             </span>
           </div>
         </header>
